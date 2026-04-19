@@ -1,0 +1,50 @@
+# Machine 1 (Frontend) - 172.20.10.3
+services:
+  traefik:
+    image: traefik:v2.11
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports:
+      - "8081:80"
+      - "8082:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - pharm
+
+  web-ui:
+    build:
+      context: .
+      dockerfile: services/web-ui/Dockerfile
+    ports:
+      - "8085:8000" # Accès direct pour débugger
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY_WEB:-change-me-web}
+      # Communication DIRECTE par IP pour éviter les erreurs de timeout/routage
+      AUTH_INTERNAL_URL: http://172.20.10.2:8001
+      API_INTERNAL_URL: http://172.20.10.2:8000
+      PUBLIC_AUTH_URL: http://172.20.10.2:8081
+      PUBLIC_API_URL: http://172.20.10.2:8081
+      CURRENCY_CODE: ${CURRENCY_CODE:-DZD}
+      CURRENCY_SYMBOL: ${CURRENCY_SYMBOL:-DA}
+      CONSUL_HTTP_ADDR: http://172.20.10.2:8500
+      SERVICE_NAME: web-ui
+      SERVICE_PORT: "8000"
+    volumes:
+      - ./services/web-ui:/app
+    entrypoint: ["/bin/sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && (python /scripts/register_consul.py || echo 'consul skip'); gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2 --timeout 30"]
+    networks:
+      - pharm
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pharm-web.rule=Host(`web.localhost`) || Host(`web.localhost:8081`) || Host(`localhost`) || Host(`localhost:8081`) || Host(`localhost:8085`)
+      - traefik.http.routers.pharm-web.entrypoints=web
+      - traefik.http.services.pharm-web.loadbalancer.server.port=8000
+
+networks:
+  pharm:
+    driver: bridge

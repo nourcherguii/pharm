@@ -1,0 +1,48 @@
+# Machine 1 (Front-end Only) - 172.20.10.3
+services:
+  traefik:
+    image: traefik:v2.11
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+    ports:
+      - "8081:80"     # Service entry (http://localhost:8081)
+      - "8082:8080"   # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik_dynamic.yml:/etc/traefik/dynamic.yml:ro
+    networks:
+      - pharm
+
+  web-ui:
+    build:
+      context: .
+      dockerfile: services/web-ui/Dockerfile
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY_WEB:-change-me-web}
+      AUTH_INTERNAL_URL: http://${MASTER_IP:-172.20.10.2}:8001
+      API_INTERNAL_URL: http://${MASTER_IP:-172.20.10.2}:8000
+      PUBLIC_AUTH_URL: http://auth.localhost:8081
+      PUBLIC_API_URL: http://api.localhost:8081
+      CURRENCY_CODE: ${CURRENCY_CODE:-DZD}
+      CURRENCY_SYMBOL: ${CURRENCY_SYMBOL:-DA}
+      CONSUL_HTTP_ADDR: http://${MASTER_IP:-172.20.10.2}:8500
+      SERVICE_NAME: web-ui
+      SERVICE_PORT: "8000"
+    volumes:
+      - ./services/web-ui:/app
+    networks:
+      - pharm
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pharm-web.rule=Host(`web.localhost`) || Host(`web.localhost:8081`) || Host(`localhost`) || Host(`localhost:8081`)
+      - traefik.http.routers.pharm-web.entrypoints=web
+      - traefik.http.services.pharm-web.loadbalancer.server.port=8000
+
+networks:
+  pharm:
+    driver: bridge

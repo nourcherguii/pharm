@@ -1,0 +1,22 @@
+http:
+  routers:
+    catalog:
+      rule: "Host(`api.localhost`) || Host(`api.localhost:8081`)"
+      entryPoints:
+        - web
+      service: catalog-service-remote
+    auth:
+      rule: "Host(`auth.localhost`) || Host(`auth.localhost:8081`)"
+      entryPoints:
+        - web
+      service: auth-service-remote
+
+  services:
+    catalog-service-remote:
+      loadBalancer:
+        servers:
+          - url: "http://172.20.10.2:8081"
+    auth-service-remote:
+      loadBalancer:
+        servers:
+          - url: "http://172.20.10.2:8081"
